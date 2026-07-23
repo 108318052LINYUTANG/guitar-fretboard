@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>吉他和弦指版視覺化工具 (Guitar Chord Fretboard)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        fretboard: '#1c1917',
+                        fretboardWood: '#291d18',
+                        fretWire: '#a8a29e',
+                        nut: '#e7e5e4'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Font Awesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Custom Fretboard Styling */
+        .fretboard-container {
+            overflow-x: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #475569 #0f172a;
+        }
+        .fretboard-container::-webkit-scrollbar {
+            height: 8px;
+        }
+        .fretboard-container::-webkit-scrollbar-track {
+            background: #0f172a;
+            border-radius: 4px;
+        }
+        .fretboard-container::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        
+        /* Metallic String Styling */
+        .string-line {
+            position: absolute;
+            width: 100%;
+            left: 0;
+            background: linear-gradient(180deg, #e2e8f0 0%, #94a3b8 50%, #64748b 100%);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+
+        /* Fret Marker Styling */
+        .fret-wire {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(90deg, #d6d3d1, #78716c, #a8a29e);
+            box-shadow: 1px 0 3px rgba(0,0,0,0.5);
+            z-index: 5;
+        }
+
+        .nut-wire {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 8px;
+            background: #f5f5f4;
+            border-right: 2px solid #a8a29e;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.6);
+            z-index: 6;
+        }
+
+        /* Custom Animations */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .animate-pulse-ring {
+            animation: pulse-ring 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 sm:px-6 lg:px-8 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-gradient-to-tr from-amber-600 to-amber-500 rounded-xl text-slate-950 shadow-lg shadow-amber-500/20">
+                    <i class="fa-solid font-bold fa-guitar text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-white via-slate-200 to-amber-400 bg-clip-text text-transparent">
+                        吉他和弦指版互動圖解
+                    </h1>
+                    <p class="text-xs text-slate-400">Guitar Chord & Fretboard Interactive Explorer</p>
+                </div>
+            </div>
+
+            <!-- Global Actions -->
+            <div class="flex items-center gap-3">
+                <button id="strumBtn" onclick="strumChord()" class="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-semibold rounded-lg shadow-md shadow-amber-500/10 transition-all flex items-center gap-2 active:scale-95">
+                    <i class="fa-solid fa-music"></i>
+                    <span>掃弦試聽 (Strum)</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex-1 flex flex-col gap-6 w-full">
+
+        <section class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col gap-5">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                
+                <!-- Quick Search Input -->
+                <div class="md:col-span-4 flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-amber-400/90 flex items-center gap-1.5">
+                        <i class="fa-solid fa-magnifying-glass"></i> 直接輸入和弦
+                    </label>
+                    <div class="relative">
+                        <input type="text" id="chordSearchInput" placeholder="例如: C, Am, F#m7, Dmaj7, G7" 
+                            class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all font-medium"
+                            oninput="onChordSearchInput(this.value)">
+                        <span id="searchStatus" class="absolute right-3 top-3 text-xs text-slate-500 hidden">
+                            <i class="fa-solid fa-check text-emerald-400"></i>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Root Note Selector -->
+                <div class="md:col-span-3 flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">根音 (Root)</label>
+                    <select id="rootSelect" onchange="onSelectChange()" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-100 focus:outline-none focus:border-amber-500 transition-all cursor-pointer">
+                        <!-- Populated dynamically by JS -->
+                    </select>
+                </div>
+
+                <!-- Chord Quality Selector -->
+                <div class="md:col-span-3 flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">和弦類型 (Type)</label>
+                    <select id="typeSelect" onchange="onSelectChange()" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-slate-100 focus:outline-none focus:border-amber-500 transition-all cursor-pointer">
+                        <!-- Populated dynamically by JS -->
+                    </select>
+                </div>
+
+                <!-- Display Mode Toggle -->
+                <div class="md:col-span-2 flex flex-col gap-1.5">
+                    <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">顯示標記</label>
+                    <div class="flex bg-slate-950 p-1 border border-slate-800 rounded-xl">
+                        <button id="modeNoteBtn" onclick="setDisplayMode('note')" class="flex-1 py-1.5 text-xs font-medium rounded-lg transition-all bg-amber-500 text-slate-950 shadow">
+                            音符名
+                        </button>
+                        <button id="modeIntervalBtn" onclick="setDisplayMode('interval')" class="flex-1 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 rounded-lg transition-all">
+                            級數
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Advanced Settings Bar -->
+            <div class="pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
+                <div class="flex items-center gap-4 flex-wrap">
+                    <!-- Tuning Selector -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-400 font-medium">吉他調音:</span>
+                        <select id="tuningSelect" onchange="onTuningChange()" class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-amber-500">
+                            <option value="standard">Standard (E A D G B E)</option>
+                            <option value="dropD">Drop D (D A D G B E)</option>
+                            <option value="halfStepDown">Half-Step Down (Eb Ab Db Gb Bb Eb)</option>
+                            <option value="dadgad">DADGAD</option>
+                            <option value="openG">Open G (D G D G B D)</option>
+                        </select>
+                    </div>
+
+                    <!-- Fret Count Selector -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-400 font-medium">顯示品數:</span>
+                        <select id="fretCountSelect" onchange="onFretCountChange()" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 focus:outline-none focus:border-amber-500">
+                            <option value="12">12 品</option>
+                            <option value="15" selected>15 品</option>
+                            <option value="21">21 品</option>
+                            <option value="24">24 品</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Quick Chord Presets / Shortcuts -->
+                <div class="flex items-center gap-1.5 overflow-x-auto py-1">
+                    <span class="text-slate-500 mr-1">熱門和弦:</span>
+                    <button onclick="setQuickChord('C')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors">C</button>
+                    <button onclick="setQuickChord('G')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors">G</button>
+                    <button onclick="setQuickChord('Am')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors">Am</button>
+                    <button onclick="setQuickChord('F')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors">F</button>
+                    <button onclick="setQuickChord('Em7')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors">Em7</button>
+                    <button onclick="setQuickChord('D7')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors">D7</button>
+                    <button onclick="setQuickChord('Bbm7')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors">Bbm7</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            
+            <!-- Active Chord Info -->
+            <div class="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-md">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="flex items-baseline gap-3">
+                            <span id="displayChordTitle" class="text-3xl font-extrabold text-amber-400">C Major</span>
+                            <span id="displayChordFormula" class="text-xs px-2.5 py-1 bg-slate-800 text-slate-300 rounded-full border border-slate-700">1 - 3 - 5</span>
+                        </div>
+                        <p id="displayChordDesc" class="text-xs text-slate-400 mt-1">大三和弦 (Major Triad) — 明亮、和諧、穩定的基礎和弦。</p>
+                    </div>
+                </div>
+
+                <!-- Component Notes -->
+                <div class="mt-4 pt-3 border-t border-slate-800 flex items-center gap-2">
+                    <span class="text-xs text-slate-400 font-medium">組成音符:</span>
+                    <div id="chordNotesList" class="flex gap-1.5 flex-wrap">
+                        <!-- Injected via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Color & Interval Legend -->
+            <div class="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between shadow-md">
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">圖解顏特色標誌 (Legend)</span>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div class="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                        <span class="w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm shadow-rose-500/50">R</span>
+                        <div class="flex flex-col">
+                            <span class="text-xs font-bold text-slate-200">根音 (Root)</span>
+                            <span class="text-[10px] text-slate-400">1度</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                        <span class="w-4 h-4 rounded-full bg-sky-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm shadow-sky-500/50">3</span>
+                        <div class="flex flex-col">
+                            <span class="text-xs font-bold text-slate-200">三音 (3rd)</span>
+                            <span class="text-[10px] text-slate-400">大3/小3度</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                        <span class="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm shadow-emerald-500/50">5</span>
+                        <div class="flex flex-col">
+                            <span class="text-xs font-bold text-slate-200">五音 (5th)</span>
+                            <span class="text-[10px] text-slate-400">純5/減5/升5</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                        <span class="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm shadow-purple-500/50">7</span>
+                        <div class="flex flex-col">
+                            <span class="text-xs font-bold text-slate-200">七音 (7th)</span>
+                            <span class="text-[10px] text-slate-400">大7/小7/減7</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 text-[11px] text-slate-500 italic">
+                    提示：點擊指版上的任意音符可獨立發聲試聽。
+                </div>
+            </div>
+
+        </section>
+
+        <section class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl">
+            <div class="fretboard-container relative rounded-xl bg-fretboardWood p-4 border border-stone-800 min-w-[700px] select-none">
+                
+                <!-- Fretboard HTML Structure rendering via JS -->
+                <div id="fretboardContainer" class="relative">
+                    <!-- Dynamic rendering happens here -->
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/80 bg-slate-950/60 py-4 text-center text-xs text-slate-500">
+        <p>吉他和弦指版學習平臺 &copy; 2026 | 支援所有標準吉他和弦、七和弦、延伸和弦與多種調音</p>
+    </footer>
+
+    <script>
+        // --- CONSTANTS & MUSIC THEORY DATA ---
+        
+        // Chromatic Scale starting from C
+        const NOTES_FLAT  = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+        const NOTES_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+        // Standard Note Name Normalizer Map
+        const NOTE_ALIAS = {
+            'DB': 'C#', 'EB': 'D#', 'GB': 'F#', 'AB': 'G#', 'BB': 'A#',
+            'C#': 'C#', 'D#': 'D#', 'F#': 'F#', 'G#': 'G#', 'A#': 'A#',
+            'C': 'C', 'D': 'D', 'E': 'E', 'F': 'F', 'G': 'G', 'A': 'A', 'B': 'B'
+        };
+
+        // Note semitone index relative to C (0..11)
+        const NOTE_TO_SEMITONE = {
+            'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3,
+            'E': 4, 'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8,
+            'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11
+        };
+
+        const SEMITONE_TO_NOTE_NAME = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+        // Guitar Tunings (String 1 to String 6 as note values relative to C0)
+        // C0=0, C1=12, C2=24, E2=28, A2=33, D3=38, G3=43, B3=47, E4=52
+        const TUNINGS = {
+            standard:    { name: 'Standard', notes: [52, 47, 43, 38, 33, 28] }, // E4, B3, G3, D3, A2, E2
+            dropD:       { name: 'Drop D',   notes: [52, 47, 43, 38, 33, 26] }, // E4, B3, G3, D3, A2, D2
+            halfStepDown:{ name: 'b Standard',notes:[51, 46, 42, 37, 32, 27] }, // Eb4, Bb3, Gb3, Db3, Ab2, Eb2
+            dadgad:      { name: 'DADGAD',   notes: [50, 45, 43, 38, 33, 26] }, // D4, A3, G3, D3, A2, D2
+            openG:       { name: 'Open G',   notes: [50, 47, 43, 38, 33, 26] }  // D4, B3, G3, D3, G2, D2
+        };
+
+        // Chord Definitions Formulas (intervals relative to Root)
+        // Interval values: 0=Root, 1=b2, 2=2/9, 3=b3, 4=3, 5=4/11, 6=b5/#4, 7=5, 8=#5/b6, 9=6/bb7, 10=b7, 11=7
+        const CHORD_TYPES = {
+            'maj': {
+                name: 'Major (大三和弦)',
+                abbr: ['maj', 'M', ''],
+                intervals: [0, 4, 7],
+                intervalLabels: { 0: 'R', 4: '3', 7: '5' },
+                desc: '明亮、穩定、經典的大三和弦。'
+            },
+            'm': {
+                name: 'Minor (小三和弦)',
+                abbr: ['m', 'min', '-'],
+                intervals: [0, 3, 7],
+                intervalLabels: { 0: 'R', 3: 'b3', 7: '5' },
+                desc: '憂鬱、柔和、感性的小三和弦。'
+            },
+            '7': {
+                name: 'Dominant 7th (屬七和弦)',
+                abbr: ['7', 'dom7'],
+                intervals: [0, 4, 7, 10],
+                intervalLabels: { 0: 'R', 4: '3', 7: '5', 10: 'b7' },
+                desc: '充滿張力與傾向解央感的經典屬七和弦。'
+            },
+            'maj7': {
+                name: 'Major 7th (大七和弦)',
+                abbr: ['maj7', 'M7', 'Δ7'],
+                intervals: [0, 4, 7, 11],
+                intervalLabels: { 0: 'R', 4: '3', 7: '5', 11: '7' },
+                desc: '爵士、流行樂常見，浪漫且富有豐富色彩。'
+            },
+            'm7': {
+                name: 'Minor 7th (小七和弦)',
+                abbr: ['m7', 'min7', '-7'],
+                intervals: [0, 3, 7, 10],
+                intervalLabels: { 0: 'R', 3: 'b3', 7: '5', 10: 'b7' },
+                desc: '溫柔、放鬆且富層次感的小七和弦。'
+            },
+            'sus4': {
+                name: 'Suspended 4th (掛四和弦)',
+                abbr: ['sus4', 'sus'],
+                intervals: [0, 5, 7],
+                intervalLabels: { 0: 'R', 5: '4', 7: '5' },
+                desc: '將3音替換為4音，帶有懸空期待解央感。'
+            },
+            'sus2': {
+                name: 'Suspended 2nd (掛二和弦)',
+                abbr: ['sus2'],
+                intervals: [0, 2, 7],
+                intervalLabels: { 0: 'R', 2: '2', 7: '5' },
+                desc: '將3音替換為2音，聽感空靈悠揚。'
+            },
+            'dim': {
+                name: 'Diminished (減三和弦)',
+                abbr: ['dim', '°'],
+                intervals: [0, 3, 6],
+                intervalLabels: { 0: 'R', 3: 'b3', 6: 'b5' },
+                desc: '緊繃、懸疑感極強的減三和弦。'
+            },
+            'dim7': {
+                name: 'Diminished 7th (減七和弦)',
+                abbr: ['dim7', '°7'],
+                intervals: [0, 3, 6, 9],
+                intervalLabels: { 0: 'R', 3: 'b3', 6: 'b5', 9: 'bb7' },
+                desc: '高度對稱且張力極強的減七和弦。'
+            },
+            'm7b5': {
+                name: 'Half-Diminished 7th (半減七和弦)',
+                abbr: ['m7b5', 'ø', 'm7-5'],
+                intervals: [0, 3, 6, 10],
+                intervalLabels: { 0: 'R', 3: 'b3', 6: 'b5', 10: 'b7' },
+                desc: '小調 2-5-1 進程的核心和弦，富神祕色彩。'
+            },
+            'aug': {
+                name: 'Augmented (增三和弦)',
+                abbr: ['aug', '+'],
+                intervals: [0, 4, 8],
+                intervalLabels: { 0: 'R', 4: '3', 8: '#5' },
+                desc: '升高五音，具有擴張與向上拉引的動態感。'
+            },
+            '5': {
+                name: 'Power Chord (五度和弦/強和弦)',
+                abbr: ['5'],
+                intervals: [0, 7],
+                intervalLabels: { 0: 'R', 7: '5' },
+                desc: '搖滾與重金屬必備，無三音屬性，強勁有力。'
+            },
+            'add9': {
+                name: 'Add 9 (加九和弦)',
+                abbr: ['add9'],
+                intervals: [0, 4, 7, 2],
+                intervalLabels: { 0: 'R', 4: '3', 7: '5', 2: '9' },
+                desc: '在大三和弦基礎上疊加9音，聲響更加晶瑩剔透。'
+            },
+            'm9': {
+                name: 'Minor 9th (小九和弦)',
+                abbr: ['m9'],
+                intervals: [0, 3, 7, 10, 2],
+                intervalLabels: { 0: 'R', 3: 'b3', 7: '5', 10: 'b7', 2: '9' },
+                desc: '極具現代質感與都市 Jazz/Neo-Soul 氛圍。'
+            },
+            'maj9': {
+                name: 'Major 9th (大九和弦)',
+                abbr: ['maj9', 'M9'],
+                intervals: [0, 4, 7, 11, 2],
+                intervalLabels: { 0: 'R', 4: '3', 7: '5', 11: '7', 2: '9' },
+                desc: '極度華麗豐富且空靈的高階爵士和弦。'
+            }
+        };
+
+        // --- STATE VARIABLES ---
+        let currentRoot = 'C';
+        let currentTypeKey = 'maj';
+        let displayMode = 'note'; // 'note' or 'interval'
+        let currentTuningKey = 'standard';
+        let fretCount = 15;
+
+        // --- WEB AUDIO API FOR GUITAR SYNTHESIS ---
+        let audioCtx = null;
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        // Synthesize plucked string acoustics
+        function playNote(midiPitch, delay = 0) {
+            try {
+                const ctx = getAudioContext();
+                const freq = 440 * Math.pow(2, (midiPitch - 69) / 12);
+                
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+
+                // Mix triangle + saw for guitar-like harmonics
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+
+                // Pluck envelope
+                const now = ctx.currentTime + delay;
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.4, now + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                osc.start(now);
+                osc.stop(now + 2);
+            } catch (e) {
+                console.warn('Audio playback error', e);
+            }
+        }
+
+        // --- APP INITIALIZATION ---
+        window.onload = function() {
+            populateSelectors();
+            renderChordDetails();
+            renderFretboard();
+        };
+
+        function populateSelectors() {
+            const rootSelect = document.getElementById('rootSelect');
+            const typeSelect = document.getElementById('typeSelect');
+
+            // Roots
+            const roots = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+            rootSelect.innerHTML = roots.map(r => `<option value="${r}">${r}</option>`).join('');
+
+            // Types
+            typeSelect.innerHTML = Object.keys(CHORD_TYPES).map(key => {
+                return `<option value="${key}">${CHORD_TYPES[key].name}</option>`;
+            }).join('');
+
+            rootSelect.value = currentRoot;
+            typeSelect.value = currentTypeKey;
+        }
+
+        // --- EVENT HANDLERS ---
+        function onSelectChange() {
+            currentRoot = document.getElementById('rootSelect').value;
+            currentTypeKey = document.getElementById('typeSelect').value;
+            
+            // Sync search box with current selection
+            const abbr = CHORD_TYPES[currentTypeKey].abbr[0];
+            document.getElementById('chordSearchInput').value = `${currentRoot}${abbr}`;
+            
+            updateApp();
+        }
+
+        function setDisplayMode(mode) {
+            displayMode = mode;
+            document.getElementById('modeNoteBtn').className = mode === 'note' 
+                ? 'flex-1 py-1.5 text-xs font-medium rounded-lg transition-all bg-amber-500 text-slate-950 shadow font-bold'
+                : 'flex-1 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 rounded-lg transition-all';
+
+            document.getElementById('modeIntervalBtn').className = mode === 'interval' 
+                ? 'flex-1 py-1.5 text-xs font-medium rounded-lg transition-all bg-amber-500 text-slate-950 shadow font-bold'
+                : 'flex-1 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 rounded-lg transition-all';
+
+            renderFretboard();
+        }
+
+        function onTuningChange() {
+            currentTuningKey = document.getElementById('tuningSelect').value;
+            renderFretboard();
+        }
+
+        function onFretCountChange() {
+            fretCount = parseInt(document.getElementById('fretCountSelect').value, 10);
+            renderFretboard();
+        }
+
+        function setQuickChord(chordStr) {
+            document.getElementById('chordSearchInput').value = chordStr;
+            onChordSearchInput(chordStr);
+        }
+
+        // Parses user string inputs like "C#m7", "Fmaj7", "Bb7", "G"
+        function onChordSearchInput(query) {
+            const trimmed = query.trim();
+            if (!trimmed) return;
+
+            // Regex for matching note + root
+            const match = trimmed.match(/^([A-Ga-g][#b]?)(.*)$/);
+            if (!match) return;
+
+            let rootRaw = match[1].toUpperCase();
+            // Normalize b / # casing
+            if (rootRaw.length === 2 && rootRaw[1] === 'B') rootRaw = rootRaw[0] + 'b';
+            
+            let suffix = match[2].trim();
+
+            if (NOTE_TO_SEMITONE[rootRaw] === undefined) return;
+
+            // Match suffix to chord type
+            let matchedTypeKey = null;
+            for (const [key, typeObj] of Object.entries(CHORD_TYPES)) {
+                if (typeObj.abbr.includes(suffix.toLowerCase()) || key === suffix.toLowerCase()) {
+                    matchedTypeKey = key;
+                    break;
+                }
+            }
+
+            // Fallback heuristics if exact match wasn't found
+            if (!matchedTypeKey) {
+                if (suffix === '' || suffix === 'M') matchedTypeKey = 'maj';
+                else if (suffix === 'm' || suffix === '-') matchedTypeKey = 'm';
+                else if (suffix === '7') matchedTypeKey = '7';
+            }
+
+            if (matchedTypeKey) {
+                currentRoot = rootRaw;
+                currentTypeKey = matchedTypeKey;
+
+                document.getElementById('rootSelect').value = currentRoot;
+                document.getElementById('typeSelect').value = currentTypeKey;
+
+                document.getElementById('searchStatus').classList.remove('hidden');
+                setTimeout(() => {
+                    document.getElementById('searchStatus').classList.add('hidden');
+                }, 1500);
+
+                updateApp();
+            }
+        }
+
+        function updateApp() {
+            renderChordDetails();
+            renderFretboard();
+        }
+
+        // --- MUSIC CALCULATION HELPERS ---
+        function getActiveChordNotes() {
+            const rootSemitone = NOTE_TO_SEMITONE[currentRoot];
+            const chordDef = CHORD_TYPES[currentTypeKey];
+
+            return chordDef.intervals.map(interval => {
+                const noteSemitone = (rootSemitone + interval) % 12;
+                const noteName = SEMITONE_TO_NOTE_NAME[noteSemitone];
+                const intervalLabel = chordDef.intervalLabels[interval] || chordDef.intervalLabels[interval % 12] || `${interval}`;
+                
+                return {
+                    semitone: noteSemitone,
+                    name: noteName,
+                    interval: interval,
+                    intervalLabel: intervalLabel,
+                    isRoot: interval === 0
+                };
+            });
+        }
+
+        // Color coding based on interval role
+        function getMarkerColorClass(intervalLabel) {
+            if (intervalLabel === 'R') return 'bg-rose-500 text-white border-rose-300 shadow-rose-500/40';
+            if (intervalLabel.includes('3')) return 'bg-sky-500 text-white border-sky-300 shadow-sky-500/40';
+            if (intervalLabel.includes('5')) return 'bg-emerald-500 text-white border-emerald-300 shadow-emerald-500/40';
+            if (intervalLabel.includes('7')) return 'bg-purple-500 text-white border-purple-300 shadow-purple-500/40';
+            return 'bg-amber-500 text-slate-950 border-amber-300 shadow-amber-500/40';
+        }
+
+        // --- UI RENDERING FUNCTIONS ---
+        function renderChordDetails() {
+            const chordDef = CHORD_TYPES[currentTypeKey];
+            const activeNotes = getActiveChordNotes();
+
+            document.getElementById('displayChordTitle').innerText = `${currentRoot} ${chordDef.name.split(' ')[0]}`;
+            
+            // Formula display
+            const formulaStr = Object.values(chordDef.intervalLabels).join(' - ');
+            document.getElementById('displayChordFormula').innerText = formulaStr;
+            document.getElementById('displayChordDesc').innerText = chordDef.desc;
+
+            // Active Notes Badges
+            const notesContainer = document.getElementById('chordNotesList');
+            notesContainer.innerHTML = activeNotes.map(n => {
+                const colorClass = getMarkerColorClass(n.intervalLabel);
+                return `
+                    <div class="flex items-center gap-1.5 px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg shadow-sm">
+                        <span class="w-2.5 h-2.5 rounded-full ${colorClass.split(' ')[0]}"></span>
+                        <span class="font-bold text-xs text-slate-100">${n.name}</span>
+                        <span class="text-[10px] text-slate-400 font-mono">(${n.intervalLabel})</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderFretboard() {
+            const container = document.getElementById('fretboardContainer');
+            container.innerHTML = '';
+
+            const tuning = TUNINGS[currentTuningKey].notes; // Array of 6 MIDI numbers (String 1 high to String 6 low)
+            const activeNotes = getActiveChordNotes();
+            const activeSemitonesMap = {};
+            activeNotes.forEach(n => {
+                activeSemitonesMap[n.semitone] = n;
+            });
+
+            // Width setup for frets (nut is narrower, fret 1 wide, decreasing slightly)
+            const fretWidths = [];
+            let currentWidth = 72;
+            for (let i = 0; i <= fretCount; i++) {
+                if (i === 0) fretWidths.push(48); // Open Nut width
+                else {
+                    fretWidths.push(Math.max(42, Math.round(currentWidth)));
+                    currentWidth *= 0.97;
+                }
+            }
+
+            const totalWidth = fretWidths.reduce((a, b) => a + b, 0);
+
+            // Outer fretboard wrapper
+            const fbWrapper = document.createElement('div');
+            fbWrapper.style.width = `${totalWidth}px`;
+            fbWrapper.className = 'relative flex flex-col py-2 select-none';
+
+            // Top Fret Numbers Header Row
+            const fretHeader = document.createElement('div');
+            fretHeader.className = 'flex border-b border-stone-700/60 pb-2 mb-1';
+            
+            let accumX = 0;
+            for (let f = 0; f <= fretCount; f++) {
+                const width = fretWidths[f];
+                const item = document.createElement('div');
+                item.style.width = `${width}px`;
+                item.className = 'text-center text-[11px] font-bold text-slate-400 font-mono';
+                item.innerText = f === 0 ? 'NUT' : f;
+                fretHeader.appendChild(item);
+            }
+            fbWrapper.appendChild(fretHeader);
+
+            // Inlay Dot Markers (Single dots: 3, 5, 7, 9, 15, 17, 19, 21 / Double dots: 12, 24)
+            const singleInlays = [3, 5, 7, 9, 15, 17, 19, 21];
+            const doubleInlays = [12, 24];
+
+            const inlayRow = document.createElement('div');
+            inlayRow.className = 'absolute inset-0 pointer-events-none z-0 top-8 bottom-4';
+
+            let leftPos = fretWidths[0];
+            for (let f = 1; f <= fretCount; f++) {
+                const w = fretWidths[f];
+                const centerPos = leftPos + w / 2;
+
+                if (singleInlays.includes(f)) {
+                    const dot = document.createElement('div');
+                    dot.className = 'absolute w-3 h-3 rounded-full bg-stone-500/30 border border-stone-400/20 transform -translate-x-1/2 -translate-y-1/2 top-1/2';
+                    dot.style.left = `${centerPos}px`;
+                    inlayRow.appendChild(dot);
+                } else if (doubleInlays.includes(f)) {
+                    const dot1 = document.createElement('div');
+                    dot1.className = 'absolute w-2.5 h-2.5 rounded-full bg-stone-500/30 border border-stone-400/20 transform -translate-x-1/2 top-1/4';
+                    dot1.style.left = `${centerPos}px`;
+
+                    const dot2 = document.createElement('div');
+                    dot2.className = 'absolute w-2.5 h-2.5 rounded-full bg-stone-500/30 border border-stone-400/20 transform -translate-x-1/2 bottom-1/4';
+                    dot2.style.left = `${centerPos}px`;
+
+                    inlayRow.appendChild(dot1);
+                    inlayRow.appendChild(dot2);
+                }
+                leftPos += w;
+            }
+            fbWrapper.appendChild(inlayRow);
+
+            // Strings Array (0: High E, 5: Low E)
+            // String thickness mapping in px
+            const stringGauges = [1.5, 2, 2.5, 3, 3.8, 4.8];
+
+            for (let strIndex = 0; strIndex < 6; strIndex++) {
+                const stringRow = document.createElement('div');
+                stringRow.className = 'relative flex items-center h-11 border-b border-stone-800/40';
+
+                // Metallic String Line
+                const stringLine = document.createElement('div');
+                stringLine.className = 'string-line';
+                stringLine.style.height = `${stringGauges[strIndex]}px`;
+                stringLine.style.top = `calc(50% - ${stringGauges[strIndex] / 2}px)`;
+                stringRow.appendChild(stringLine);
+
+                // Base pitch for open string
+                const openMidiPitch = tuning[strIndex];
+
+                // Render Frets for this string
+                let curX = 0;
+                for (let f = 0; f <= fretCount; f++) {
+                    const w = fretWidths[f];
+                    const fretCell = document.createElement('div');
+                    fretCell.style.width = `${w}px`;
+                    fretCell.className = 'relative h-full flex items-center justify-center z-20 group cursor-pointer';
+
+                    // Fret Wire Rendering
+                    if (f === 0) {
+                        const nut = document.createElement('div');
+                        nut.className = 'nut-wire right-0';
+                        fretCell.appendChild(nut);
+                    } else {
+                        const wire = document.createElement('div');
+                        wire.className = 'fret-wire right-0';
+                        fretCell.appendChild(wire);
+                    }
+
+                    // Calculate Note on this Fret
+                    const noteMidi = openMidiPitch + f;
+                    const noteSemitone = noteMidi % 12;
+                    const chordNoteInfo = activeSemitonesMap[noteSemitone];
+
+                    if (chordNoteInfo) {
+                        const colorClasses = getMarkerColorClass(chordNoteInfo.intervalLabel);
+                        
+                        const marker = document.createElement('button');
+                        marker.className = `w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs border shadow-lg transition-transform hover:scale-125 active:scale-95 ${colorClasses} ${chordNoteInfo.isRoot ? 'ring-2 ring-rose-400 ring-offset-1 ring-offset-stone-900 z-30' : ''}`;
+                        
+                        // Display text (Note Name vs Interval)
+                        const displayText = displayMode === 'note' ? chordNoteInfo.name : chordNoteInfo.intervalLabel;
+                        marker.innerText = displayText;
+
+                        // Tooltip on Hover
+                        marker.title = `第 ${6 - strIndex} 弦 ${f} 品: ${chordNoteInfo.name} (${chordNoteInfo.intervalLabel})`;
+
+                        // Click to play individual note
+                        marker.onclick = (e) => {
+                            e.stopPropagation();
+                            playNote(noteMidi);
+                            
+                            // Visual feedback ripple
+                            marker.classList.add('animate-ping');
+                            setTimeout(() => marker.classList.remove('animate-ping'), 500);
+                        };
+
+                        fretCell.appendChild(marker);
+                    } else {
+                        // Hover trigger for empty frets
+                        fretCell.onclick = () => playNote(noteMidi);
+                    }
+
+                    stringRow.appendChild(fretCell);
+                    curX += w;
+                }
+
+                fbWrapper.appendChild(stringRow);
+            }
+
+            container.appendChild(fbWrapper);
+        }
+
+        // --- AUDIO STRUMMING LOGIC ---
+        function strumChord() {
+            const tuning = TUNINGS[currentTuningKey].notes;
+            const activeNotes = getActiveChordNotes();
+            const activeSemitones = new Set(activeNotes.map(n => n.semitone));
+
+            // Find best playable voicing notes across strings 6 to 1
+            const strumPitches = [];
+
+            // Simple heuristic to pick lowest bass note + clean triad shape across strings
+            for (let strIndex = 5; strIndex >= 0; strIndex--) {
+                const openPitch = tuning[strIndex];
+                
+                // Find nearest matching chord fret on this string (up to fret 12)
+                let bestFret = -1;
+                for (let f = 0; f <= 12; f++) {
+                    const pitch = openPitch + f;
+                    if (activeSemitones.has(pitch % 12)) {
+                        bestFret = f;
+                        break;
+                    }
+                }
+
+                if (bestFret !== -1) {
+                    strumPitches.push(openPitch + bestFret);
+                }
+            }
+
+            // Strum sequence with slight stagger delay (0.05s between strings)
+            strumPitches.forEach((pitch, i) => {
+                playNote(pitch, i * 0.05);
+            });
+        }
+    </script>
+</body>
+</html>
